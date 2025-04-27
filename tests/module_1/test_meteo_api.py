@@ -28,7 +28,7 @@ def test_get_mean_data_monthly():
     df_monthly = get_mean_data_monthly(df)
 
     # Verify sampled reduced nº rows
-    assert len(df_monthly) < len(df), "Resampled did not reduce number of rows"
+    assert len(df_monthly) < len(df), "Resampled did not reduce number of rows "
 
     # Verify columns are still the same
     for col in VARIABLES:

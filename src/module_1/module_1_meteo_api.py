@@ -26,7 +26,7 @@ def call_api(params: dict):
 def get_data_meteo_api(city: str):
     cords = COORDINATES[city]
 
-    # API doc: dict "params" in a defined order to assign data correctly
+    # API doc: dict "params"  in a defined order to assign data correctly
     params = {
         "latitude": cords["latitude"],
         "longitude": cords["longitude"],
