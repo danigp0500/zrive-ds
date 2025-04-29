@@ -1,6 +1,7 @@
 import requests
 import pandas as pd
 import matplotlib.pyplot as plt
+import time
 
 
 API_URL = "https://archive-api.open-meteo.com/v1/archive"
@@ -13,95 +14,89 @@ COORDINATES = {
 VARIABLES = ["temperature_2m_mean", "precipitation_sum", "wind_speed_10m_max"]
 
 
-def call_api(params: dict):
-    try:
-        response = requests.get(API_URL, params=params, timeout=30)
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(f"Error fetching meteo data: {e}")
-        return None
+def call_api(URL: str, params: dict):
+    for attempt in range(1, 4):
+        try:
+            response = requests.get(url=URL, params=params, timeout=30)
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"Attempt {attempt}: Received status {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            print(f"Attempt {attempt}:Error fetching data from API: {e}")
+            return
+
+        time.sleep(2)
+
+    raise RuntimeError("Failed to fetch data after 3 attempts.")
 
 
-def get_data_meteo_api(city: str):
-    cords = COORDINATES[city]
-
-    # API doc: dict "params"  in a defined order to assign data correctly
+def get_data_meteo_api(URL: str, city: str):
     params = {
-        "latitude": cords["latitude"],
-        "longitude": cords["longitude"],
+        **COORDINATES[city],
         "start_date": "2010-01-01",
         "end_date": "2019-12-31",
         "daily": VARIABLES,
     }
+    print(params)
 
-    raw_data = call_api(params=params)
-    # Once we have the data -> dataframe
-    daily_data = raw_data["daily"]
+    data_json = call_api(URL, params)
 
+    daily_data = data_json["daily"]
     df = pd.DataFrame(daily_data)
+
+    # Needed to convert to datetime type to be able to do mean
     df["time"] = pd.to_datetime(df["time"])
     df.set_index("time", inplace=True)
-    df.index.name = "date"
-
+    # print(df)
     return df
 
 
 # Son demasiadas muestras, por lo que decido hacer la media mensual
-def get_mean_data_monthly(df: pd.DataFrame, freq="MS"):
-    # Index has to be datetime type to sample date
-    df.index = pd.to_datetime(df.index)
-    df_sampled = pd.DataFrame()
+def get_mean_data_monthly(df: pd.DataFrame):
+    df_monthly = pd.DataFrame(df.resample("MS").mean())
+    # print(df_monthly)
 
-    # Calculate mean by period of all measures
-    df_sampled = df.resample(freq).mean(numeric_only=True)
-
-    return df_sampled
+    return df_monthly
 
 
-def plot_meteo_data(all_data: dict):
-    fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(10, 8), sharex=True)
+def plot_meteo_data(data: dict):
+
+    fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(10, 8))
 
     # Plot temp
-    for city, city_df in all_data.items():
-        axs[0].plot(city_df.index, city_df["temperature_2m_mean"], label=city)
+    for city, df in data.items():
+        axs[0].plot(df.index, df["temperature_2m_mean"], label=city)
         axs[0].set_title("Max Monthly Temperature")
         axs[0].set_ylabel("°C")
         axs[0].legend()
-
     # Plot precip
-    for city, city_df in all_data.items():
-        axs[1].plot(city_df.index, city_df["precipitation_sum"], label=city)
+    for city, df in data.items():
+        axs[1].plot(df.index, df["precipitation_sum"], label=city)
         axs[1].set_title("Monthly Precipitation")
         axs[1].set_ylabel("mm")
         axs[1].legend()
-
     # Plot windspeed
-    for city, city_df in all_data.items():
-        axs[2].plot(city_df.index, city_df["wind_speed_10m_max"], label=city)
+    for city, df in data.items():
+        axs[2].plot(df.index, df["wind_speed_10m_max"], label=city)
         axs[2].set_title("Max Monthly WindSpeed")
         axs[2].set_ylabel("km/h")
         axs[2].legend()
-
     plt.xlabel("Date")
     plt.tight_layout()
     plt.show()
 
 
 def main():
-    all_data = {}
-
+    data = {}
     # 1. Call API for each city
     for city in COORDINATES.keys():
-        print(f"Obteniendo datos para {city}...")
-        daily_df = get_data_meteo_api(city)
-        if daily_df is not None:
-            # 2. Monthly mean
-            monthly_df = get_mean_data_monthly(daily_df)
-            all_data[city] = monthly_df
+        d = get_data_meteo_api(API_URL, city)
+        if d is not None:
+            m = get_mean_data_monthly(d)
+            data[city] = m
 
-    # 3. Plotting all data
-    plot_meteo_data(all_data)
+    plot_meteo_data(data)
 
 
 if __name__ == "__main__":
